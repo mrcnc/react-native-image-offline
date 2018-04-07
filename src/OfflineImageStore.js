@@ -104,14 +104,14 @@ class OfflineImageStore {
    * This is very useful specially if your application want to support offline.
    * Note: We recommend call this method after `restore`
    */
-  preLoad = async (uris) => {
+  preLoad = async (uris, headers) => {
     if (uris === undefined && !Array.isArray(uris)) {
       throw 'uris should not be undefined and should be array type';
     }
     uris.forEach((uri) => {
       // If image not exist already, then download
       if (!this.entries[uri]) {
-        this._downloadImage({ 'uri': uri });
+        this._downloadImage({ 'uri': uri, 'headers': headers });
         return;
       }
 
@@ -120,7 +120,7 @@ class OfflineImageStore {
         const entry = this.entries[uri];
         // Only exist if base directory matches
         if (entry.basePath !== this.getBaseDir()) {
-          this._downloadImage({ 'uri': uri });
+          this._downloadImage({ 'uri': uri, 'headers': headers });
         }
       }
     });
@@ -239,25 +239,32 @@ class OfflineImageStore {
       // Only exist if base directory matches
       if (entry.basePath === this.getBaseDir()) {
         if (this.store.debugMode) {
-          console.log('Image exist offline', this.entries[uri].localUriPath);
+          console.log('Image exists offline at ', this.entries[uri].basePath + '/' + this.entries[uri].localUriPath);
         }
         return this.entries[uri].basePath + '/' + this.entries[uri].localUriPath;
       }
     }
     if (this.store.debugMode) {
-      console.log('Image not exist offline', uri);
+      console.log(`Image does not exist offline for ${uri}`);
+      if (uri.substr(-1) != '/') {
+         console.log('Trying again with trailing slash');
+         return this.getImageOfflinePath(uri + '/');
+      }
     }
     return undefined;
   };
 
   _getImage = (source, reloadImage) => {
+    if (this.store.debugMode) {
+      console.log(`OfflineImageStore.js reloadImage for ${source.uri} is ${reloadImage}`);
+    }
     // Image already exist
     if (this.entries[source.uri]) {
       const entry = this.entries[source.uri];
       // Only exist if base directory matches
       if (entry.basePath === this.getBaseDir()) {
         if (this.store.debugMode) {
-          console.log('Image exist offline', source.uri);
+          console.log(`OfflineImageStore.js basePath is ${entry.basePath}`);
         }
         // Notify subscribed handler
         this._notify(source.uri);
@@ -277,14 +284,18 @@ class OfflineImageStore {
     }
 
     if (this.store.debugMode) {
-      console.log('Image not exist offline', source.uri);
+      console.log('OfflineImageStore.js Image does not exist offline', source.uri);
     }
     this._downloadImage(source);
   };
 
   _downloadImage = (source) => {
+      if (this.store.debugMode) {
+        console.log('Downloading image with uri', source.uri);
+      }
     const method = source.method ? source.method : 'GET';
     const imageFilePath = this._getImageFileName(source.uri);
+    // todo: can we increase the timeout?  do we want to do that?
     RNFetchBlob
       .config({
         path: this.getBaseDir() + '/' + imageFilePath
@@ -292,12 +303,15 @@ class OfflineImageStore {
       .fetch(method, source.uri, source.headers)
       .then(() => {
         // Add entry to entry list!!
+        if (this.store.debugMode) {
+          console.log(`Downloaded image from ${source.uri} to ${imageFilePath}`);
+        }
         this._addEntry(source.uri, imageFilePath);
         // Notify subscribed handler AND Persist entries to AsyncStorage for offline
         this._updateOfflineStore(source.uri).done();
-      }).catch(() => {
+      }).catch(e => {
       if (this.store.debugMode) {
-        console.log('Failed to download image', source.uri);
+        console.log(`Failed to download image ${source.uri}`, e);
       }
     });
   };
@@ -307,7 +321,7 @@ class OfflineImageStore {
     if (handlers && handlers.length > 0) {
       handlers.forEach(handler => {
         if (this.store.debugMode) {
-          console.log('Notify handler called', uri);
+          // console.log('Notify handler called', uri);
         }
         handler(this.entries[uri].basePath + '/' + this.entries[uri].localUriPath);
       });

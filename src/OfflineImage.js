@@ -77,6 +77,7 @@ class OfflineImage extends React.Component {
   render() {
     const { fallbackSource, source, component } = this.props;
     let sourceImage = source;
+    console.log(`rendering image ${JSON.stringify(source)} from ${this.state.path}`)
 
     // Replace source.uri with offline image path instead waiting for image to download from server
     if (source.uri) {
